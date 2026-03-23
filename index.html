@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memory Blog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="ambient ambient-left"></div>
+  <div class="ambient ambient-right"></div>
+
+  <main class="app-shell">
+    <section id="auth-view" class="view active"></section>
+
+    <section id="app-view" class="view">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Personal Publishing Space</p>
+          <h1>Memory Blog</h1>
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost-btn" id="open-settings-btn" type="button">个性设置</button>
+          <button class="ghost-btn danger-text" id="logout-btn" type="button">退出登录</button>
+        </div>
+      </header>
+
+      <section class="hero-card">
+        <div>
+          <p class="hero-kicker">欢迎回来</p>
+          <h2 id="welcome-text">开始写下今天的想法</h2>
+          <p class="hero-copy">现在文章和用户设置都存到服务端 SQLite 中，同时会在本机额外导出一份 JSON 备份。</p>
+        </div>
+        <div class="hero-actions">
+          <button class="primary-btn" id="new-post-btn" type="button">写文章</button>
+          <button class="secondary-btn" id="view-drafts-btn" type="button">查看草稿</button>
+        </div>
+      </section>
+
+      <section class="card access-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Access</p>
+            <h3>网站入口</h3>
+          </div>
+          <span class="meta-pill">二维码 + 链接</span>
+        </div>
+        <div class="access-grid">
+          <div>
+            <label class="field">
+              <span>公网网站链接</span>
+              <input id="site-url-input" type="url" placeholder="填写最终公网地址，例如 https://your-blog.example.com">
+            </label>
+            <div class="access-actions">
+              <button class="primary-btn" id="save-site-url-btn" type="button">保存入口</button>
+              <button class="ghost-btn" id="reset-site-url-btn" type="button">清空入口</button>
+            </div>
+            <p class="access-copy">链接入口：<a id="site-url-link" href="#" target="_blank" rel="noreferrer"></a></p>
+            <p class="access-copy">扫码入口：右侧二维码会自动指向这里保存的链接。</p>
+            <p class="access-copy">账号和密码不会预置，首次使用时由你自己注册设置。</p>
+          </div>
+          <div class="qr-panel">
+            <img id="site-qr-image" alt="网站二维码">
+            <p class="access-copy">如果暂时没填公网链接，二维码会先指向当前浏览器访问地址。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card access-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Storage</p>
+            <h3>数据存储</h3>
+          </div>
+          <span class="meta-pill">SQLite + JSON</span>
+        </div>
+        <p class="access-copy" id="storage-copy">正在读取存储位置...</p>
+      </section>
+
+      <section class="card list-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Articles</p>
+            <h3>博客列表</h3>
+          </div>
+          <span class="meta-pill" id="post-count-pill">0 篇文章</span>
+        </div>
+        <div id="posts-container" class="posts-grid"></div>
+      </section>
+    </section>
+  </main>
+
+  <div id="editor-modal" class="modal">
+    <div class="modal-panel wide">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">Editor</p>
+          <h3 id="editor-title">创作文章</h3>
+        </div>
+        <button class="icon-btn" id="close-editor-btn" type="button">×</button>
+      </div>
+      <div class="editor-toolbar">
+        <button class="ghost-btn toolbar-btn" data-command="bold" type="button">加粗</button>
+        <button class="ghost-btn toolbar-btn" data-command="italic" type="button">斜体</button>
+        <button class="ghost-btn toolbar-btn" data-command="formatBlock" data-value="h2" type="button">标题</button>
+        <button class="ghost-btn toolbar-btn" data-command="insertUnorderedList" type="button">列表</button>
+        <button class="ghost-btn" id="insert-link-btn" type="button">链接</button>
+        <label class="ghost-btn file-label" for="insert-image-input">图片</label>
+        <input id="insert-image-input" type="file" accept="image/*">
+      </div>
+      <label class="field">
+        <span>文章标题</span>
+        <input id="post-title-input" type="text" maxlength="80" placeholder="输入标题">
+      </label>
+      <label class="field">
+        <span>文章摘要</span>
+        <textarea id="post-summary-input" rows="3" maxlength="160" placeholder="写一句摘要，展示在列表页"></textarea>
+      </label>
+      <label class="field">
+        <span>正文内容</span>
+        <div id="post-content-input" class="editor-surface" contenteditable="true"></div>
+      </label>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="save-draft-btn" type="button">保存草稿</button>
+        <button class="primary-btn" id="publish-post-btn" type="button">发布文章</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="detail-modal" class="modal">
+    <article class="modal-panel article-panel">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">Article</p>
+          <h3 id="detail-title"></h3>
+        </div>
+        <button class="icon-btn" id="close-detail-btn" type="button">×</button>
+      </div>
+      <p id="detail-meta" class="detail-meta"></p>
+      <p id="detail-summary" class="detail-summary"></p>
+      <div id="detail-content" class="detail-content"></div>
+      <div class="modal-actions" id="detail-actions"></div>
+    </article>
+  </div>
+
+  <div id="settings-modal" class="modal">
+    <div class="modal-panel">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">Settings</p>
+          <h3>个性化设置</h3>
+        </div>
+        <button class="icon-btn" id="close-settings-btn" type="button">×</button>
+      </div>
+
+      <div class="settings-grid">
+        <section class="settings-section">
+          <h4>背景设置</h4>
+          <label class="field">
+            <span>背景颜色</span>
+            <input id="background-color-input" type="color">
+          </label>
+          <label class="field">
+            <span>背景图片</span>
+            <input id="background-image-input" type="file" accept="image/*">
+          </label>
+          <button class="ghost-btn" id="clear-background-image-btn" type="button">清除背景图片</button>
+        </section>
+
+        <section class="settings-section">
+          <h4>字体设置</h4>
+          <label class="field">
+            <span>字体类型</span>
+            <select id="font-family-select">
+              <option value="'Outfit', sans-serif">Outfit</option>
+              <option value="'Noto Serif SC', serif">思源宋体</option>
+              <option value="'Microsoft YaHei', sans-serif">微软雅黑</option>
+              <option value="Arial, sans-serif">Arial</option>
+              <option value="SimSun, serif">宋体</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>字体大小</span>
+            <input id="font-size-input" type="range" min="12" max="24" value="16">
+            <strong id="font-size-value">16px</strong>
+          </label>
+          <label class="field">
+            <span>字体颜色</span>
+            <input id="font-color-input" type="color">
+          </label>
+        </section>
+      </div>
+
+      <section class="settings-section password-section">
+        <h4>修改密码</h4>
+        <label class="field">
+          <span>旧密码</span>
+          <input id="old-password-input" type="password" placeholder="输入旧密码">
+        </label>
+        <label class="field">
+          <span>新密码</span>
+          <input id="new-password-input" type="password" placeholder="至少 6 位">
+        </label>
+        <label class="field">
+          <span>确认新密码</span>
+          <input id="confirm-new-password-input" type="password" placeholder="再次输入新密码">
+        </label>
+      </section>
+
+      <div class="modal-actions">
+        <button class="ghost-btn" id="cancel-settings-btn" type="button">取消</button>
+        <button class="primary-btn" id="save-settings-btn" type="button">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
