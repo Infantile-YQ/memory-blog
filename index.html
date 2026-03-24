@@ -14,6 +14,44 @@
   <div class="ambient ambient-right"></div>
 
   <main class="app-shell">
+    <section id="public-post-view" class="view">
+      <article class="card public-post-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Shared Article</p>
+            <h2 id="public-post-title">文章加载中...</h2>
+          </div>
+          <a class="ghost-btn public-home-link" href="/">返回首页</a>
+        </div>
+        <p id="public-post-meta" class="detail-meta"></p>
+        <p id="public-post-summary" class="detail-summary"></p>
+        <div id="public-post-content" class="detail-content"></div>
+      </article>
+
+      <section class="card access-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Share</p>
+            <h3>这篇文章的链接与二维码</h3>
+          </div>
+          <span class="meta-pill">可直接索引</span>
+        </div>
+        <div class="access-grid">
+          <div>
+            <p class="access-copy">文章链接：<a id="public-post-link" href="#" target="_blank" rel="noreferrer"></a></p>
+            <div class="access-actions">
+              <button class="primary-btn" id="copy-public-link-btn" type="button">复制链接</button>
+              <button class="ghost-btn" id="download-public-qr-btn" type="button">下载二维码</button>
+            </div>
+          </div>
+          <div class="qr-panel">
+            <img id="public-post-qr-image" alt="文章二维码">
+            <p class="access-copy">扫码后可直接打开这一篇博客。</p>
+          </div>
+        </div>
+      </section>
+    </section>
+
     <section id="auth-view" class="view active"></section>
 
     <section id="app-view" class="view">
@@ -32,7 +70,7 @@
         <div>
           <p class="hero-kicker">欢迎回来</p>
           <h2 id="welcome-text">开始写下今天的想法</h2>
-          <p class="hero-copy">现在文章和用户设置都存到服务端 SQLite 中，同时会在本机额外导出一份 JSON 备份。</p>
+          <p class="hero-copy">发布后的文章会自动生成可分享的直达链接与二维码，别人不登录也能直接打开这篇博客。</p>
         </div>
         <div class="hero-actions">
           <button class="primary-btn" id="new-post-btn" type="button">写文章</button>
@@ -57,10 +95,10 @@
             <div class="access-actions">
               <button class="primary-btn" id="save-site-url-btn" type="button">保存入口</button>
               <button class="ghost-btn" id="reset-site-url-btn" type="button">清空入口</button>
+              <button class="ghost-btn" id="download-qr-btn" type="button">下载网站二维码</button>
             </div>
             <p class="access-copy">链接入口：<a id="site-url-link" href="#" target="_blank" rel="noreferrer"></a></p>
-            <p class="access-copy">扫码入口：右侧二维码会自动指向这里保存的链接。</p>
-            <p class="access-copy">账号和密码不会预置，首次使用时由你自己注册设置。</p>
+            <p class="access-copy">二维码会自动指向这里保存的网站地址。</p>
           </div>
           <div class="qr-panel">
             <img id="site-qr-image" alt="网站二维码">

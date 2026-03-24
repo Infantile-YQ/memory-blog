@@ -14,9 +14,19 @@ const state = {
   previewBackgroundImage: "",
   siteUrl: "",
   backupPath: "",
+  publicPost: null,
 };
 
 const elements = {
+  publicPostView: document.getElementById("public-post-view"),
+  publicPostTitle: document.getElementById("public-post-title"),
+  publicPostMeta: document.getElementById("public-post-meta"),
+  publicPostSummary: document.getElementById("public-post-summary"),
+  publicPostContent: document.getElementById("public-post-content"),
+  publicPostLink: document.getElementById("public-post-link"),
+  publicPostQrImage: document.getElementById("public-post-qr-image"),
+  copyPublicLinkBtn: document.getElementById("copy-public-link-btn"),
+  downloadPublicQrBtn: document.getElementById("download-public-qr-btn"),
   authView: document.getElementById("auth-view"),
   appView: document.getElementById("app-view"),
   postsContainer: document.getElementById("posts-container"),
@@ -49,6 +59,7 @@ const elements = {
   siteUrlInput: document.getElementById("site-url-input"),
   saveSiteUrlBtn: document.getElementById("save-site-url-btn"),
   resetSiteUrlBtn: document.getElementById("reset-site-url-btn"),
+  downloadQrBtn: document.getElementById("download-qr-btn"),
   siteUrlLink: document.getElementById("site-url-link"),
   siteQrImage: document.getElementById("site-qr-image"),
 };
@@ -60,6 +71,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function bootstrap() {
+  const sharedPostId = new URLSearchParams(window.location.search).get("post");
+  if (sharedPostId) {
+    await loadPublicPost(sharedPostId);
+    return;
+  }
+
   try {
     const response = await fetch("/api/me", { credentials: "same-origin" });
     if (response.status === 401) {
@@ -74,10 +91,13 @@ async function bootstrap() {
   } catch (error) {
     console.error(error);
   }
+
   syncApp();
 }
 
 function bindGlobalEvents() {
+  elements.copyPublicLinkBtn.addEventListener("click", copyCurrentPublicPostLink);
+  elements.downloadPublicQrBtn.addEventListener("click", downloadCurrentPublicPostQr);
   document.getElementById("logout-btn").addEventListener("click", logout);
   document.getElementById("open-settings-btn").addEventListener("click", openSettingsModal);
   document.getElementById("close-settings-btn").addEventListener("click", closeSettingsModal);
@@ -102,6 +122,8 @@ function bindGlobalEvents() {
   elements.clearBackgroundImageBtn.addEventListener("click", clearBackgroundImage);
   elements.saveSiteUrlBtn.addEventListener("click", saveSiteUrl);
   elements.resetSiteUrlBtn.addEventListener("click", resetSiteUrl);
+  elements.downloadQrBtn.addEventListener("click", downloadSiteQrCode);
+
   elements.editorModal.addEventListener("click", (event) => {
     if (event.target === elements.editorModal) {
       closeEditorModal();
@@ -124,8 +146,8 @@ function renderAuthView() {
     <section class="auth-card">
       <div class="brand-mark">MB</div>
       <p class="eyebrow">Memory Enabled Blog</p>
-      <h1>把你的博客、登录状态和界面偏好一起保存下来</h1>
-      <p class="auth-helper">现在数据存入服务端 SQLite 数据库，并在本机额外生成 JSON 备份文件，适合后续公网部署与多设备访问。</p>
+      <h1>发布后的博客可以直接生成分享链接和二维码</h1>
+      <p class="auth-helper">登录后发布你的文章，然后复制文章链接或下载文章二维码，就可以把这一篇博客单独分享出去。</p>
       <div class="auth-tabs">
         <button class="tab-btn ${state.authMode === "login" ? "active" : ""}" data-mode="login" type="button">登录</button>
         <button class="tab-btn ${state.authMode === "register" ? "active" : ""}" data-mode="register" type="button">注册</button>
@@ -168,11 +190,14 @@ async function handleAuthSubmit(event) {
   const confirmPassword = String(formData.get("confirmPassword") || "");
   const endpoint = state.authMode === "login" ? "/api/login" : "/api/register";
 
-  const payload = { username, password, confirmPassword };
-  const data = await request(endpoint, { method: "POST", body: JSON.stringify(payload) });
+  const data = await request(endpoint, {
+    method: "POST",
+    body: JSON.stringify({ username, password, confirmPassword }),
+  });
   if (!data) {
     return;
   }
+
   state.user = data.user;
   state.siteUrl = data.siteUrl || "";
   state.backupPath = data.backupPath || "";
@@ -182,13 +207,16 @@ async function handleAuthSubmit(event) {
 
 function syncApp() {
   const isLoggedIn = Boolean(state.user);
+  elements.publicPostView.classList.remove("active");
   elements.authView.classList.toggle("active", !isLoggedIn);
   elements.appView.classList.toggle("active", isLoggedIn);
+
   if (!isLoggedIn) {
     applySettings(DEFAULT_SETTINGS);
     renderAccessInfo();
     return;
   }
+
   applySettings(state.user.settings || DEFAULT_SETTINGS);
   elements.welcomeText.textContent = `${state.user.username}，开始写下今天的想法`;
   renderAccessInfo();
@@ -196,7 +224,7 @@ function syncApp() {
 }
 
 function renderAccessInfo() {
-  const siteUrl = state.siteUrl || window.location.origin;
+  const siteUrl = buildBaseUrl();
   elements.siteUrlInput.value = state.siteUrl;
   elements.siteUrlLink.href = siteUrl;
   elements.siteUrlLink.textContent = siteUrl;
@@ -225,6 +253,7 @@ function renderPosts() {
       <div class="post-actions">
         <button class="ghost-btn" type="button" data-action="view" data-id="${post.id}">查看详情</button>
         <button class="ghost-btn" type="button" data-action="edit" data-id="${post.id}">编辑</button>
+        ${post.status === "published" ? `<button class="ghost-btn" type="button" data-action="share" data-id="${post.id}">复制链接</button>` : ""}
         <button class="ghost-btn danger-text" type="button" data-action="delete" data-id="${post.id}">删除</button>
       </div>
     </article>
@@ -246,14 +275,22 @@ function handlePostAction(action, postId) {
   if (!post) {
     return;
   }
+
   if (action === "view") {
     openDetailModal(post);
     return;
   }
+
   if (action === "edit") {
     openEditorModal(post);
     return;
   }
+
+  if (action === "share") {
+    copyPostLink(post);
+    return;
+  }
+
   if (action === "delete") {
     if (!window.confirm(`确认删除《${post.title}》吗？删除后无法恢复。`)) {
       return;
@@ -284,11 +321,22 @@ function openDetailModal(post) {
   elements.detailMeta.textContent = `作者：${state.user.username} · 发布时间：${formatDate(post.publishedAt || post.updatedAt)}`;
   elements.detailSummary.textContent = post.summary || "";
   elements.detailContent.innerHTML = post.content;
-  elements.detailActions.innerHTML = `<button class="ghost-btn" id="detail-edit-btn" type="button">编辑文章</button>`;
+  elements.detailActions.innerHTML = `
+    <button class="ghost-btn" id="detail-edit-btn" type="button">编辑文章</button>
+    ${post.status === "published" ? `<button class="ghost-btn" id="detail-copy-link-btn" type="button">复制文章链接</button>` : ""}
+    ${post.status === "published" ? `<button class="ghost-btn" id="detail-download-qr-btn" type="button">下载文章二维码</button>` : ""}
+  `;
+
   document.getElementById("detail-edit-btn").addEventListener("click", () => {
     closeDetailModal();
     openEditorModal(post);
   });
+
+  if (post.status === "published") {
+    document.getElementById("detail-copy-link-btn").addEventListener("click", () => copyPostLink(post));
+    document.getElementById("detail-download-qr-btn").addEventListener("click", () => downloadPostQr(post));
+  }
+
   elements.detailModal.classList.add("open");
 }
 
@@ -322,17 +370,20 @@ function insertInlineImage(event) {
 }
 
 async function savePost(status) {
-  const payload = {
-    id: state.editingPostId,
-    title: elements.postTitleInput.value.trim(),
-    summary: elements.postSummaryInput.value.trim(),
-    content: elements.postContentInput.innerHTML.trim(),
-    status,
-  };
-  const data = await request("/api/posts", { method: "POST", body: JSON.stringify(payload) });
+  const data = await request("/api/posts", {
+    method: "POST",
+    body: JSON.stringify({
+      id: state.editingPostId,
+      title: elements.postTitleInput.value.trim(),
+      summary: elements.postSummaryInput.value.trim(),
+      content: elements.postContentInput.innerHTML.trim(),
+      status,
+    }),
+  });
   if (!data) {
     return;
   }
+
   state.user = data.user;
   renderPosts();
   closeEditorModal();
@@ -344,6 +395,7 @@ async function deletePost(postId) {
   if (!data) {
     return;
   }
+
   state.user = data.user;
   renderPosts();
   showToast("文章已删除");
@@ -409,22 +461,25 @@ async function saveSettings() {
     return;
   }
 
-  const payload = {
-    settings: {
-      backgroundColor: elements.backgroundColorInput.value,
-      backgroundImage: state.previewBackgroundImage,
-      fontFamily: elements.fontFamilySelect.value,
-      fontSize: Number(elements.fontSizeInput.value),
-      fontColor: elements.fontColorInput.value,
-    },
-    passwordChange: oldPassword || newPassword || confirmNewPassword
-      ? { oldPassword, newPassword, confirmNewPassword }
-      : null,
-  };
-  const data = await request("/api/settings", { method: "PUT", body: JSON.stringify(payload) });
+  const data = await request("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({
+      settings: {
+        backgroundColor: elements.backgroundColorInput.value,
+        backgroundImage: state.previewBackgroundImage,
+        fontFamily: elements.fontFamilySelect.value,
+        fontSize: Number(elements.fontSizeInput.value),
+        fontColor: elements.fontColorInput.value,
+      },
+      passwordChange: oldPassword || newPassword || confirmNewPassword
+        ? { oldPassword, newPassword, confirmNewPassword }
+        : null,
+    }),
+  });
   if (!data) {
     return;
   }
+
   state.user = data.user;
   applySettings(state.user.settings);
   closeSettingsModal();
@@ -432,22 +487,28 @@ async function saveSettings() {
 }
 
 async function saveSiteUrl() {
-  const siteUrl = elements.siteUrlInput.value.trim();
-  if (!siteUrl) {
+  const rawUrl = elements.siteUrlInput.value.trim();
+  if (!rawUrl) {
     showToast("请先填写网站链接");
     return;
   }
+
   let normalized;
   try {
-    normalized = new URL(siteUrl).toString();
+    normalized = new URL(rawUrl).toString();
   } catch (error) {
     showToast("请输入正确的链接地址");
     return;
   }
-  const data = await request("/api/access", { method: "PUT", body: JSON.stringify({ siteUrl: normalized }) });
+
+  const data = await request("/api/access", {
+    method: "PUT",
+    body: JSON.stringify({ siteUrl: normalized }),
+  });
   if (!data) {
     return;
   }
+
   state.siteUrl = data.siteUrl || "";
   state.backupPath = data.backupPath || state.backupPath;
   renderAccessInfo();
@@ -455,14 +516,116 @@ async function saveSiteUrl() {
 }
 
 async function resetSiteUrl() {
-  const data = await request("/api/access", { method: "PUT", body: JSON.stringify({ siteUrl: "" }) });
+  const data = await request("/api/access", {
+    method: "PUT",
+    body: JSON.stringify({ siteUrl: "" }),
+  });
   if (!data) {
     return;
   }
+
   state.siteUrl = "";
   state.backupPath = data.backupPath || state.backupPath;
   renderAccessInfo();
   showToast("网站入口已清空");
+}
+
+async function loadPublicPost(postId) {
+  const data = await request(`/api/posts/public/${encodeURIComponent(postId)}`, {}, false);
+  if (!data?.post) {
+    elements.publicPostTitle.textContent = "文章不存在或未发布";
+    elements.publicPostMeta.textContent = "";
+    elements.publicPostSummary.textContent = "请检查当前链接是否正确。";
+    elements.publicPostContent.innerHTML = "";
+    elements.publicPostLink.href = window.location.href;
+    elements.publicPostLink.textContent = window.location.href;
+    elements.publicPostQrImage.src = buildQrCodeUrl(window.location.href);
+    elements.publicPostView.classList.add("active");
+    elements.authView.classList.remove("active");
+    elements.appView.classList.remove("active");
+    applySettings(DEFAULT_SETTINGS);
+    return;
+  }
+
+  state.publicPost = data.post;
+  state.siteUrl = data.siteUrl || state.siteUrl;
+  renderPublicPost();
+}
+
+function renderPublicPost() {
+  const post = state.publicPost;
+  const postUrl = buildPostUrl(post.id);
+  elements.publicPostTitle.textContent = post.title;
+  elements.publicPostMeta.textContent = `作者：${post.author} · 发布时间：${formatDate(post.publishedAt || post.updatedAt)}`;
+  elements.publicPostSummary.textContent = post.summary || "";
+  elements.publicPostContent.innerHTML = post.content;
+  elements.publicPostLink.href = postUrl;
+  elements.publicPostLink.textContent = postUrl;
+  elements.publicPostQrImage.src = buildQrCodeUrl(postUrl);
+  elements.publicPostView.classList.add("active");
+  elements.authView.classList.remove("active");
+  elements.appView.classList.remove("active");
+  applySettings(DEFAULT_SETTINGS);
+  document.title = `${post.title} - Memory Blog`;
+}
+
+function buildBaseUrl() {
+  return (state.siteUrl || window.location.origin).replace(/\/$/, "");
+}
+
+function buildPostUrl(postId) {
+  return `${buildBaseUrl()}/?post=${encodeURIComponent(postId)}`;
+}
+
+function buildQrCodeUrl(value) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(value)}`;
+}
+
+function downloadQrForUrl(url, filename) {
+  const link = document.createElement("a");
+  link.href = buildQrCodeUrl(url).replace("size=240x240", "size=1200x1200");
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function downloadSiteQrCode() {
+  downloadQrForUrl(buildBaseUrl(), "memory-blog-site-qr.png");
+  showToast("网站二维码开始下载");
+}
+
+function downloadPostQr(post) {
+  downloadQrForUrl(buildPostUrl(post.id), `post-${post.id}-qr.png`);
+  showToast("文章二维码开始下载");
+}
+
+async function copyToClipboard(value) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  window.prompt("复制下面的链接", value);
+}
+
+async function copyPostLink(post) {
+  await copyToClipboard(buildPostUrl(post.id));
+  showToast("文章链接已复制");
+}
+
+async function copyCurrentPublicPostLink() {
+  if (!state.publicPost) {
+    return;
+  }
+  await copyToClipboard(buildPostUrl(state.publicPost.id));
+  showToast("文章链接已复制");
+}
+
+function downloadCurrentPublicPostQr() {
+  if (!state.publicPost) {
+    return;
+  }
+  downloadPostQr(state.publicPost);
 }
 
 function applySettings(settings) {
@@ -493,6 +656,7 @@ async function request(url, options = {}, showError = true) {
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       ...options,
     });
+
     const data = await response.json();
     if (!response.ok) {
       if (showError) {
@@ -508,10 +672,6 @@ async function request(url, options = {}, showError = true) {
     }
     return null;
   }
-}
-
-function buildQrCodeUrl(value) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(value)}`;
 }
 
 function formatDate(value) {

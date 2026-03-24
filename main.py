@@ -181,6 +181,30 @@ class BlogDatabase:
             ],
         }
 
+    def get_public_post(self, post_id: str) -> dict | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT posts.id, posts.title, posts.summary, posts.content, posts.updated_at,
+                       posts.published_at, users.username
+                FROM posts
+                JOIN users ON users.id = posts.user_id
+                WHERE posts.id = ? AND posts.status = 'published'
+                """,
+                (post_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "summary": row["summary"],
+            "content": row["content"],
+            "updatedAt": row["updated_at"],
+            "publishedAt": row["published_at"],
+            "author": row["username"],
+        }
+
     def create_session(self, user_id: str) -> str:
         token = secrets.token_urlsafe(32)
         with self.connect() as conn:
@@ -292,14 +316,13 @@ class BlogDatabase:
 
 DB = BlogDatabase(DB_PATH, BACKUP_PATH)
 
-
 public_site_url = os.environ.get("PUBLIC_SITE_URL", "").strip()
 if public_site_url and not DB.get_site_url():
     DB.set_site_url(public_site_url)
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "MemoryBlog/2.1"
+    server_version = "MemoryBlog/3.0"
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -327,6 +350,15 @@ class AppHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/access":
             self.send_json({"siteUrl": DB.get_site_url(), "backupPath": str(BACKUP_PATH)})
+            return
+
+        if parsed.path.startswith("/api/posts/public/"):
+            post_id = parsed.path.split("/")[-1]
+            post = DB.get_public_post(post_id)
+            if not post:
+                self.send_json({"error": "文章不存在或未发布"}, status=HTTPStatus.NOT_FOUND)
+                return
+            self.send_json({"post": post, "siteUrl": DB.get_site_url()})
             return
 
         self.send_json({"error": "接口不存在"}, status=HTTPStatus.NOT_FOUND)

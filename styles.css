@@ -85,6 +85,17 @@ button {
   display: block;
 }
 
+.public-post-card {
+  margin-bottom: 24px;
+}
+
+.public-home-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .auth-card,
 .card,
 .hero-card,
